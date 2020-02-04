@@ -4,6 +4,7 @@ var versionSelect = '';
 
 var path = basePath + 'docserv/data/'
 var productData = 'no_data';
+var productHashes = [];
 
 function loadJSON(path, success, error) {
   var xhr = new XMLHttpRequest();
@@ -57,8 +58,9 @@ function populateProductSelect() {
     link.setAttribute( 'href', '#' + productlinelist[ i ] );
     link.textContent = productData.productline[ Object.keys( productData.productline )[ i ] ];
     productSelect.appendChild( link );
+    productHashes.push( '#' + productlinelist[ i ] );
     link.addEventListener('click',function(){
-        var links = productSelect.getElementsByTagName( 'a' );
+        var links = productSelect.getElementsByClassName( 'ds-selected' );
         for (var i = 0; i < links.length; i++) {
           links[i].classList.remove( 'ds-selected' );
         }
@@ -237,7 +239,7 @@ function populateDocSet() {
           };
           e_languageChoice.textContent = docSetData.category[i].document[j][k].lang;
           e_languageSelector.appendChild(e_languageChoice);
-	};
+        };
         e_languageSelector.addEventListener('change',function(){
           // FIXME: this parent.parent.parent thing is ugly.
           var e_documentFormats = this.parentElement.parentElement.getElementsByClassName('ds-docset-table-formats')[0];
@@ -315,6 +317,19 @@ function normalizePath(potentialPath) {
   };
 }
 
+function setProductFromHash() {
+  if (location.hash && productHashes.indexOf(location.hash) > -1 ) {
+    // largely copypasta from above
+    var links = productSelect.getElementsByClassName( 'ds-selected' );
+    for (var i = 0; i < links.length; i++) {
+      links[i].classList.remove( 'ds-selected' );
+    }
+    productSelect.querySelectorAll('[href="' + location.hash + '"]')[0].classList.add( 'ds-selected' );
+    populateVersionSelect(location.hash.substr(1));
+  };
+}
+
+
 function dsInit() {
   body = document.getElementsByTagName( 'body' )[0];
   if (pageRole == 'main' | pageRole == 'unsupported') {
@@ -324,6 +339,9 @@ function dsInit() {
     if ( typeof(productData) === 'object' ) {
       populateProductSelect();
     }
+
+    setProductFromHash();
+    window.addEventListener("hashchange", setProductFromHash, false);
   }
   else if (pageRole == 'product') {
     if ( typeof(docSetData) === 'object' ) {
