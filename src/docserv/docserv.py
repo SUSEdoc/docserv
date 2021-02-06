@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import multiprocessing
 import os
 import queue
 import resource
@@ -318,6 +319,11 @@ class Docserv(DocservState, DocservConfig):
         Create worker and REST API threads.
         """
 
+        if multiprocessing.cpu_count() < self.config['server']['max_threads']:
+            self.config['server']['max_threads'] = multiprocessing.cpu_count()
+            logger.info("Scaling down the number of threads to %i, to avoid creating more threads than there are CPUs.",
+                self.config['server']['max_threads'])
+
         # Increase number of files that can be opened on the system, otherwise
         # we tend to run into issues. With 12 threads, we tend to hover around
         # ~1500 within our process (and more within the Docker containers
@@ -348,7 +354,8 @@ class Docserv(DocservState, DocservConfig):
         file_limit_soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
         if resource.getrlimit(file_limit_soft < min_safe_file_limit:
             self.config['server']['max_threads'] = int(file_limit_soft / files_per_thread)
-            logger.warning("Scaling down the number of threads to %i to avoid opening too many files." % self.config['server']['max_threads'])
+            logger.warning("Scaling down the number of threads to %i to avoid opening too many files.",
+                self.config['server']['max_threads'])
 
         try:
             # After starting docserv, make sure to stitch as the first thing,
