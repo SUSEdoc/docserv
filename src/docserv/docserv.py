@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import queue
+import resource
 import shlex
 import subprocess
 import sys
@@ -260,15 +261,13 @@ class DocservConfig:
         try:
             self.config['server'] = {}
             self.config['server']['name'] = config_file
-            self.config['server']['loglevel'] = int(
-                config['server']['loglevel'])
+            self.config['server']['loglevel'] = int(config['server']['loglevel'])
             self.config['server']['host'] = config['server']['host']
             self.config['server']['port'] = int(config['server']['port'])
             self.config['server']['repo_dir'] = config['server']['repo_dir']
             self.config['server']['temp_repo_dir'] = config['server']['temp_repo_dir']
             self.config['server']['valid_languages'] = config['server']['valid_languages']
-            self.config['server']['max_threads'] = int(
-                config['server']['max_threads'])
+            self.config['server']['max_threads'] = int(config['server']['max_threads'])
             self.config['targets'] = {}
             for section in config.sections():
                 if not str(section).startswith("target_"):
@@ -318,6 +317,39 @@ class Docserv(DocservState, DocservConfig):
         """
         Create worker and REST API threads.
         """
+
+        # Increase number of files that can be opened on the system, otherwise
+        # we tend to run into issues. With 12 threads, we tend to hover around
+        # ~1500 within our process (and more within the Docker containers
+        # supposedly), but the default is just 1024 per process.
+
+        # This is a guess, from looking at the average SLE run
+        files_per_thread = 200
+        wanted_threads = self.config['server']['max_threads']
+        min_safe_file_limit = files_per_thread * wanted_threads
+
+        # We will only get 4096 anyway. This is what we dream of, but let's not
+        # dream too big.
+        ideal_file_limit = 8192
+
+        # The following is the equivalent of calling ulimit -n & ulimit -Hn
+        file_limit_soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        file_limit_hard = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+        new_file_limit = ideal_file_limit
+        if file_limits[1] < ideal_file_limit:
+            new_file_limit = file_limit_hard
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (new_file_limit, file_limits[1]) )
+        except ValueError:
+            logger.warning("Could not update limit on open files for process to %i (from %i).",
+                new_file_limit, file_limits[0])
+
+        # Ask again and scale down the number of threads if it's not enough
+        file_limit_soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        if resource.getrlimit(file_limit_soft < min_safe_file_limit:
+            self.config['server']['max_threads'] = int(file_limit_soft / files_per_thread)
+            logger.warning("Scaling down the number of threads to %i to avoid opening too many files." % self.config['server']['max_threads'])
+
         try:
             # After starting docserv, make sure to stitch as the first thing,
             # this increases startup time but means that as long as the config
